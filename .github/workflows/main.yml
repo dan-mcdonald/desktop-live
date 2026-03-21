@@ -23,4 +23,4 @@ jobs:
       - name: Doctor
         run: wails doctor
       - name: Build
-        run: wails build
+        run: wails build ${{ runner.os == 'Linux' && '-tags webkit2_41' || ''}}
