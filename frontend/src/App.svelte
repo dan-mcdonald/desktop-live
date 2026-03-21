@@ -1,26 +1,44 @@
 <script lang="ts">
-  import logo from './assets/images/logo-universal.png'
-  import {Greet} from '../wailsjs/go/main/App.js'
+  import logo from "./assets/images/logo-universal.png";
+  import { Greet } from "../wailsjs/go/main/App.js";
+  import { onMount } from "svelte";
 
-  let resultText: string = "Please enter your name below 👇"
-  let name: string
+  let resultText: string = "Please enter your name below 👇";
+  let name: string;
+
+  async function onReady(): Promise<void> {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    let devices = await navigator.mediaDevices.enumerateDevices();
+    const audioInput = devices.find((device) => device.kind === "audioinput");
+    resultText = JSON.stringify(audioInput);
+  }
+
+  onMount(onReady);
 
   function greet(): void {
-    Greet(name).then(result => resultText = result)
+    Greet(name).then((result) => {
+      resultText = result;
+    });
   }
 </script>
 
 <main>
-  <img alt="Wails logo" id="logo" src="{logo}">
+  <img alt="Wails logo" id="logo" src={logo} />
   <div class="result" id="result">{resultText}</div>
   <div class="input-box" id="input">
-    <input autocomplete="off" bind:value={name} class="input" id="name" type="text"/>
+    <input
+      autocomplete="off"
+      bind:value={name}
+      class="input"
+      id="name"
+      type="text"
+    />
     <button class="btn" on:click={greet}>Greet</button>
   </div>
 </main>
 
 <style>
-
   #logo {
     display: block;
     width: 50%;
@@ -75,5 +93,4 @@
     border: none;
     background-color: rgba(255, 255, 255, 1);
   }
-
 </style>

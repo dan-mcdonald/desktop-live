@@ -24,3 +24,9 @@ jobs:
         run: wails doctor
       - name: Build
         run: wails build ${{ runner.os == 'Linux' && '-tags webkit2_41' || ''}}
+      - name: Upload artifact for tagged commits
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: desktop-live-${{ runner.os }}
+          path: build/bin/desktop-live*
