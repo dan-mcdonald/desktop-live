@@ -16,6 +16,8 @@ jobs:
         uses: actions/setup-node@v6.3.0
         with:
           node-version: '24.x'
+      - name: install wails cli
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Doctor
         run: wails doctor
       - name: Build
