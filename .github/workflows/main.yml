@@ -1,0 +1,16 @@
+on: push
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v6.3.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v6.3.0
+      - name: Doctor
+        run: wails doctor
+      - name: Build
+        run: wails build
