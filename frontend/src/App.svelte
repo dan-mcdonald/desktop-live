@@ -1,30 +1,110 @@
 <script lang="ts">
-  import logo from "./assets/images/logo-universal.png";
-  import { Greet } from "../wailsjs/go/main/App.js";
+  import { PollMessage, PostMessage } from "../wailsjs/go/main/App.js";
   import { onMount } from "svelte";
 
   let resultText: string = "Please enter your name below 👇";
   let name: string;
+  let recorder: MediaRecorder;
+  let chunks: BlobPart[] = [];
+
+  function onDataAvailable(e: BlobEvent) {
+    chunks.push(e.data);
+  }
 
   async function onReady(): Promise<void> {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((track) => track.stop());
-    let devices = await navigator.mediaDevices.enumerateDevices();
-    const audioInput = devices.find((device) => device.kind === "audioinput");
-    resultText = JSON.stringify(audioInput);
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = onDataAvailable;
+    recorder.onstop = onStop;
+    // stream.getTracks().forEach((track) => track.stop());
+    // const devices = await navigator.mediaDevices.enumerateDevices();
+    // const inputStream = devices.find((device) => device.kind === "audioinput");
+    // resultText = JSON.stringify(inputStream);
+    const audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const bufferLength = 2048;
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = bufferLength;
+    const dataArray = new Uint8Array(bufferLength);
+    source.connect(analyser);
+    const canvas = document.getElementById("visualizer")! as HTMLCanvasElement;
+    const canvasCtx = canvas.getContext("2d")!;
+    draw();
+
+    function draw() {
+      const WIDTH = canvas.width;
+      const HEIGHT = canvas.height;
+
+      requestAnimationFrame(draw);
+
+      analyser.getByteTimeDomainData(dataArray);
+
+      canvasCtx.fillStyle = "rgb(200, 200, 200)";
+      canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      canvasCtx.lineWidth = 2;
+      canvasCtx.strokeStyle = "rgb(0, 0, 0)";
+
+      canvasCtx.beginPath();
+
+      let sliceWidth = (WIDTH * 1.0) / bufferLength;
+      let x = 0;
+
+      for (let i = 0; i < bufferLength; i++) {
+        let v = dataArray[i] / 128.0;
+        let y = (v * HEIGHT) / 2;
+
+        if (i === 0) {
+          canvasCtx.moveTo(x, y);
+        } else {
+          canvasCtx.lineTo(x, y);
+        }
+
+        x += sliceWidth;
+      }
+
+      canvasCtx.lineTo(canvas.width, canvas.height / 2);
+      canvasCtx.stroke();
+    }
   }
 
   onMount(onReady);
 
+  function startTalk() {
+    chunks = [];
+    recorder.start();
+  }
+
+  function stopTalk() {
+    recorder.stop();
+  }
+
+  function onStop() {
+    console.log(`Recording stopped, chunks: ${chunks.length}`);
+    console.log("first chunk:", chunks[0]);
+  }
+
   function greet(): void {
-    Greet(name).then((result) => {
-      resultText = result;
+    PostMessage({ Text: name }).then((result) => {
+      resultText = "";
     });
   }
+
+  function pollMessage(): void {
+    PollMessage().then((result) => {
+      console.log(JSON.stringify(result));
+      pollMessage();
+    });
+  }
+
+  pollMessage();
 </script>
 
 <main>
-  <img alt="Wails logo" id="logo" src={logo} />
+  <canvas id="visualizer" width="500" height="200"></canvas>
+  <button id="talk" on:pointerdown={startTalk} on:pointerup={stopTalk}
+    >Talk</button
+  >
   <div class="result" id="result">{resultText}</div>
   <div class="input-box" id="input">
     <input
@@ -39,6 +119,10 @@
 </main>
 
 <style>
+  #visualizer {
+    display: block;
+    margin: auto;
+  }
   #logo {
     display: block;
     width: 50%;

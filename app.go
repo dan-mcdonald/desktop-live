@@ -10,12 +10,17 @@ import (
 
 // App struct
 type App struct {
-	ctx context.Context
+	ctx   context.Context
+	fe2be chan FrontendMessage
+	be2fe chan *genai.LiveServerMessage
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{
+		fe2be: make(chan FrontendMessage),
+		be2fe: make(chan *genai.LiveServerMessage),
+	}
 }
 
 // startup is called when the app starts. The context is saved
@@ -23,6 +28,28 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	go a.connectToGemini()
+}
+
+func geminiReceiveServerMessages(session *genai.Session, be2fe chan *genai.LiveServerMessage) {
+	for {
+		resp, err := session.Receive()
+		if err != nil {
+			log.Fatal(err)
+		}
+		be2fe <- resp
+	}
+}
+
+type FrontendMessage struct {
+	Text string
+}
+
+func (a *App) PostMessage(msg FrontendMessage) {
+	a.fe2be <- msg
+}
+
+func (a *App) PollMessage() *genai.LiveServerMessage {
+	return <-a.be2fe
 }
 
 func (a *App) connectToGemini() {
@@ -50,27 +77,18 @@ func (a *App) connectToGemini() {
 			},
 		},
 	}
-	stream, err := client.Live.Connect(a.ctx, "gemini-2.5-flash-native-audio-preview-12-2025", &config)
+	session, err := client.Live.Connect(a.ctx, "gemini-2.5-flash-native-audio-preview-12-2025", &config)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer stream.Close()
+	defer session.Close()
 
-	for {
-		resp, err := stream.Receive()
-		if err != nil {
-			log.Fatal(err)
-		}
-		if resp.SetupComplete != nil {
-			fmt.Printf("Setup complete: %#v\n", resp.SetupComplete)
-			continue
-		}
-		if resp.GoAway != nil {
-			fmt.Printf("Go away: %s\n", resp.GoAway.TimeLeft)
-			break
-		}
-		fmt.Printf("unhandled message: %#v\n", resp)
-		break
+	go geminiReceiveServerMessages(session, a.be2fe)
+
+	for feMsg := range a.fe2be {
+		session.SendRealtimeInput(genai.LiveRealtimeInput{
+			Text: feMsg.Text,
+		})
 	}
 }
 
