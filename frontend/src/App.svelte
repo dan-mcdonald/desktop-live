@@ -1,11 +1,13 @@
 <script lang="ts">
   import { PollMessage, PostMessage } from "../wailsjs/go/main/App.js";
+  import type { genai } from "../wailsjs/go/models.ts";
   import { onMount } from "svelte";
 
   let resultText: string = "Please enter your name below 👇";
   let name: string;
   let recorder: MediaRecorder;
   let chunks: BlobPart[] = [];
+  let outAudioCtx: AudioContext;
 
   function onDataAvailable(e: BlobEvent) {
     chunks.push(e.data);
@@ -90,21 +92,100 @@
     });
   }
 
+  function process(message: genai.LiveServerMessage) {
+    if (message.setupComplete) {
+      console.log("Setup complete");
+      pollMessage();
+    } else if (message.serverContent) {
+      const content = message.serverContent;
+      if (content.modelTurn) {
+        const turn = content.modelTurn;
+        if (turn.parts) {
+          for (const part of turn.parts) {
+            if (part.inlineData) {
+              const inlineData = part.inlineData;
+              if (inlineData.mimeType != "audio/pcm;rate=24000") {
+                console.log("unexpected mime type:", inlineData.mimeType);
+                return;
+              }
+              playAudio(inlineData.data);
+              pollMessage();
+            } else if (part.text) {
+              resultText += part.text;
+              pollMessage();
+            } else {
+              console.log("unexpected part:", part);
+            }
+          }
+        }
+      }
+    } else {
+      console.log("unexpected message:", message);
+    }
+  }
+
   function pollMessage(): void {
     PollMessage().then((result) => {
       console.log(JSON.stringify(result));
-      pollMessage();
+      try {
+        process(result);
+      } catch (e) {
+        console.log("error processing message:", e);
+      }
     });
   }
 
-  pollMessage();
+  function playAudio(data: string) {
+    // data is a base64 encoded string of uint16-le PCM mono audio at 24khz sample rate
+    const byteArray = Uint8Array.fromBase64(data);
+    const dataView = new DataView(byteArray.buffer);
+    outAudioCtx = new AudioContext({ sampleRate: 24000 });
+    const frameCount = dataView.byteLength / 2;
+    const buffer = new AudioBuffer({
+      numberOfChannels: 1,
+      length: frameCount,
+      sampleRate: outAudioCtx.sampleRate,
+    });
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataView.getInt16(i * 2, true) / 32768.0;
+    }
+    const source = outAudioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(outAudioCtx.destination);
+    source.start();
+  }
+
+  function play(): void {
+    outAudioCtx = new AudioContext();
+    const channels = 2;
+    const frameCount = outAudioCtx.sampleRate * 1.0;
+    const buffer = new AudioBuffer({
+      numberOfChannels: channels,
+      length: frameCount,
+      sampleRate: outAudioCtx.sampleRate,
+    });
+    for (let channel = 0; channel < channels; channel++) {
+      const channelData = buffer.getChannelData(channel);
+      for (let i = 0; i < frameCount; i++) {
+        channelData[i] = Math.random() * 2.0 - 1.0;
+      }
+    }
+    const source = outAudioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(outAudioCtx.destination);
+    source.start();
+  }
 </script>
 
 <main>
+  <audio id="audio"></audio>
   <canvas id="visualizer" width="500" height="200"></canvas>
   <button id="talk" on:pointerdown={startTalk} on:pointerup={stopTalk}
     >Talk</button
   >
+  <button on:click={pollMessage}>Poll</button>
+  <button on:click={play}>Play</button>
   <div class="result" id="result">{resultText}</div>
   <div class="input-box" id="input">
     <input
@@ -122,17 +203,6 @@
   #visualizer {
     display: block;
     margin: auto;
-  }
-  #logo {
-    display: block;
-    width: 50%;
-    height: 50%;
-    margin: auto;
-    padding: 10% 0 0;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    background-origin: content-box;
   }
 
   .result {
