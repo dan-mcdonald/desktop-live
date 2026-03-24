@@ -109,7 +109,6 @@
                 return;
               }
               playAudio(inlineData.data);
-              pollMessage();
             } else if (part.text) {
               resultText += part.text;
               pollMessage();
@@ -118,6 +117,14 @@
             }
           }
         }
+      } else if (content.generationComplete) {
+        console.log("Generation complete");
+        pollMessage();
+      } else if (content.turnComplete) {
+        console.log("Turn complete", message.usageMetadata);
+        pollMessage();
+      } else {
+        console.log("unexpected content:", content);
       }
     } else {
       console.log("unexpected message:", message);
@@ -136,7 +143,7 @@
   }
 
   function playAudio(data: string) {
-    // data is a base64 encoded string of uint16-le PCM mono audio at 24khz sample rate
+    // data is a base64 encoded string of signed 16-bit little-endian PCM mono audio at 24khz sample rate
     const byteArray = Uint8Array.fromBase64(data);
     const dataView = new DataView(byteArray.buffer);
     outAudioCtx = new AudioContext({ sampleRate: 24000 });
@@ -154,6 +161,7 @@
     source.buffer = buffer;
     source.connect(outAudioCtx.destination);
     source.start();
+    source.onended = pollMessage;
   }
 
   function play(): void {
