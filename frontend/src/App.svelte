@@ -14,6 +14,7 @@
   }
 
   async function onReady(): Promise<void> {
+    outAudioCtx = new AudioContext({ sampleRate: 24000 });
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = onDataAvailable;
@@ -133,11 +134,10 @@
 
   function pollMessage(): void {
     PollMessage().then((result) => {
-      console.log(JSON.stringify(result));
       try {
         process(result);
       } catch (e) {
-        console.log("error processing message:", e);
+        console.log("error processing message:", JSON.stringify(result), e);
       }
     });
   }
@@ -146,7 +146,6 @@
     // data is a base64 encoded string of signed 16-bit little-endian PCM mono audio at 24khz sample rate
     const byteArray = Uint8Array.fromBase64(data);
     const dataView = new DataView(byteArray.buffer);
-    outAudioCtx = new AudioContext({ sampleRate: 24000 });
     const frameCount = dataView.byteLength / 2;
     const buffer = new AudioBuffer({
       numberOfChannels: 1,
@@ -163,27 +162,6 @@
     source.start();
     source.onended = pollMessage;
   }
-
-  function play(): void {
-    outAudioCtx = new AudioContext();
-    const channels = 2;
-    const frameCount = outAudioCtx.sampleRate * 1.0;
-    const buffer = new AudioBuffer({
-      numberOfChannels: channels,
-      length: frameCount,
-      sampleRate: outAudioCtx.sampleRate,
-    });
-    for (let channel = 0; channel < channels; channel++) {
-      const channelData = buffer.getChannelData(channel);
-      for (let i = 0; i < frameCount; i++) {
-        channelData[i] = Math.random() * 2.0 - 1.0;
-      }
-    }
-    const source = outAudioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(outAudioCtx.destination);
-    source.start();
-  }
 </script>
 
 <main>
@@ -192,8 +170,7 @@
   <button id="talk" on:pointerdown={startTalk} on:pointerup={stopTalk}
     >Talk</button
   >
-  <button on:click={pollMessage}>Poll</button>
-  <button on:click={play}>Play</button>
+  <button on:click={pollMessage}>Start</button>
   <div class="result" id="result">{resultText}</div>
   <div class="input-box" id="input">
     <input
