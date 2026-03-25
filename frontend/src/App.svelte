@@ -76,6 +76,14 @@
   function startTalk() {
     chunks = [];
     recorder.start();
+    setTimeout(requestData, 1000);
+  }
+
+  function requestData() {
+    if (recorder.state === "recording") {
+      recorder.requestData();
+      setTimeout(requestData, 1000);
+    }
   }
 
   function stopTalk() {
